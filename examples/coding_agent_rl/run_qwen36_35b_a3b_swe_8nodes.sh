@@ -198,10 +198,13 @@ MISC_ARGS=(
    --accumulate-allreduce-grads-in-fp32
    --attention-softmax-in-fp32
    --attention-backend flash
-   --moe-token-dispatcher-type flex
-   --moe-enable-deepep
+   --moe-token-dispatcher-type "${MOE_TOKEN_DISPATCHER_TYPE:-flex}"
    --colocate
 )
+
+if [[ "${ENABLE_DEEPEP:-1}" == "1" ]]; then
+   MISC_ARGS+=(--moe-enable-deepep)
+fi
 
 if [[ "${DEBUG_ROLLOUT_ONLY:-0}" == "1" ]]; then
    MISC_ARGS+=(--debug-rollout-only)
@@ -291,6 +294,7 @@ keys = (
     "E2B_API_KEY", "ADAPTER_PUBLIC_HOST",
     "SLIME_AGENT_SANDBOX_BACKEND",
     "SLIME_AGENT_DOCKER_BIN", "SLIME_AGENT_DOCKER_RUN_ARGS", "SLIME_AGENT_DOCKER_KEEP_CONTAINER",
+    "SLIME_AGENT_LOCAL_SCRIPT_COMMAND", "SLIME_AGENT_LOCAL_SCRIPT_MAX_TOKENS",
     "SLIME_AGENT_NODE_TARBALL", "SLIME_AGENT_CC_TARBALL", "SLIME_AGENT_CODEX_TARBALL",
     "SWE_AGENT_TIME_BUDGET_SEC", "SWE_EVAL_TIMEOUT_SEC", "SWE_BOOT_CONCURRENCY",
     "ADAPTER_BIND_HOST", "ADAPTER_PORT",
@@ -298,6 +302,7 @@ keys = (
     "SLIME_AGENT_CC_EXTRA_ENVS", "SLIME_AGENT_CODEX_EXTRA_ARGS", "SLIME_AGENT_CODEX_EXTRA_ENVS",
     "SWE_CC_PROMPT",
     "SLIME_AGENT_SANDBOX_IMAGE_METADATA_KEY",
+    "CUDA_HOME", "PATH", "LD_LIBRARY_PATH", "HF_HOME",
 )
 env = {k: os.environ[k] for k in keys if k in os.environ}
 env["MASTER_ADDR"] = os.environ["MASTER_ADDR"]
@@ -305,7 +310,9 @@ env["MASTER_PORT"] = os.environ.get("MASTER_PORT", "")
 env["GLOO_SOCKET_IFNAME"] = os.environ["GLOO_SOCKET_IFNAME"]
 env["TP_SOCKET_IFNAME"] = os.environ["GLOO_SOCKET_IFNAME"]
 env["NCCL_SOCKET_IFNAME"] = os.environ["NCCL_SOCKET_IFNAME"]
-env["PYTHONPATH"] = f"/root/Megatron-LM/:{os.environ['SLIME_DIR']}"
+megatron_dir = os.environ.get("MEGATRON_DIR", "/root/Megatron-LM")
+existing_pythonpath = os.environ.get("PYTHONPATH", "")
+env["PYTHONPATH"] = ":".join(p for p in (megatron_dir, os.environ["SLIME_DIR"], existing_pythonpath) if p)
 env["CUDA_DEVICE_MAX_CONNECTIONS"] = "1"
 env["NCCL_NVLS_ENABLE"] = "0"
 print(json.dumps({"env_vars": env}))
