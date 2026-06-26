@@ -139,9 +139,19 @@ def add_sglang_arguments(parser):
 
 
 def validate_args(args):
-    args.sglang_dp_size = args.sglang_data_parallel_size
-    args.sglang_pp_size = args.sglang_pipeline_parallel_size
-    args.sglang_ep_size = args.sglang_expert_parallel_size
+    def compat_attr(*names, default=1):
+        for name in names:
+            value = getattr(args, name, None)
+            if value is not None:
+                return value
+        return default
+
+    args.sglang_dp_size = compat_attr("sglang_data_parallel_size", "sglang_dp_size")
+    args.sglang_pp_size = compat_attr("sglang_pipeline_parallel_size", "sglang_pp_size")
+    args.sglang_ep_size = compat_attr("sglang_expert_parallel_size", "sglang_ep_size")
+    args.sglang_data_parallel_size = args.sglang_dp_size
+    args.sglang_pipeline_parallel_size = args.sglang_pp_size
+    args.sglang_expert_parallel_size = args.sglang_ep_size
 
     # Compute effective TP size considering PP size
     if args.sglang_pp_size > 1:
