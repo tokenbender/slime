@@ -157,6 +157,10 @@ PERF_ARGS=(
    --use-dynamic-batch-size
 )
 
+if [[ "${DISABLE_GRAD_ACCUM_FUSION:-0}" == "1" ]]; then
+   PERF_ARGS+=(--no-gradient-accumulation-fusion)
+fi
+
 ALGO_ARGS=(
    --advantage-estimator grpo
    --kl-loss-coef 0.00
