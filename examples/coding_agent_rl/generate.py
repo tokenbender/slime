@@ -30,7 +30,7 @@ from typing import Any
 from slime.agent.adapters import AnthropicAdapter, OpenAIAdapter
 from slime.agent.aiohttp_threaded import FilteredAccessLogger, run_app_in_thread
 from slime.agent.harness import ClaudeCodeHarness, CodexHarness
-from slime.agent.sandbox import E2BSandbox
+from slime.agent.sandbox import E2BSandbox, LocalDockerSandbox, Sandbox, sandbox_backend
 from slime.utils.misc import SingletonMeta
 from slime.utils.processing_utils import load_tokenizer
 from slime.utils.types import Sample
@@ -86,9 +86,18 @@ CONFIG = SweConfig.from_env()
 _BOOT_SEM = asyncio.Semaphore(CONFIG.boot_concurrency)
 
 
+def _new_sandbox(image: str) -> Sandbox:
+    backend = sandbox_backend()
+    if backend in {"e2b", "e2b_sdk"}:
+        return E2BSandbox(image)
+    if backend in {"local_docker", "docker"}:
+        return LocalDockerSandbox(image)
+    raise ValueError(f"Unsupported SLIME_AGENT_SANDBOX_BACKEND={backend!r}")
+
+
 @asynccontextmanager
-async def boot_agent_sandbox(image: str, instance_id: str) -> AsyncIterator[E2BSandbox]:
-    """Boot a fresh E2B sandbox and install the selected harness toolchain.
+async def boot_agent_sandbox(image: str, instance_id: str) -> AsyncIterator[Sandbox]:
+    """Boot a fresh sandbox and install the selected harness toolchain.
 
     Create the sandbox from the dataset image, install Node 22 + the harness CLI
     from host tarballs, retry transient boot/install failures, and close the
@@ -97,7 +106,7 @@ async def boot_agent_sandbox(image: str, instance_id: str) -> AsyncIterator[E2BS
     sb = None
     last_err: Exception | None = None
     for attempt in range(CONFIG.boot_retries):
-        cand = E2BSandbox(image)
+        cand = _new_sandbox(image)
         try:
             async with _BOOT_SEM:
                 await cand.__aenter__()

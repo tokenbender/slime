@@ -16,14 +16,30 @@ the Anthropic-compatible endpoint, and drains trainable `TokenSegment`s with
 
 ## Environment Setup
 
-The slime training stack itself follows the standard setup. On top of that you need:
+The slime training stack itself follows the standard setup. On top of that you need one sandbox backend.
 
-1. **An E2B-compatible sandbox cluster** (or any provider that speaks the E2B SDK). Configure via `E2B_API_KEY` (e.g. the standard `e2b_xxx` key from https://e2b.dev, or any internal endpoint that accepts the same SDK). The official SDK validates this value locally, so internal gateways that ignore auth still need a syntactically valid `e2b_` + 40 hex-character placeholder.
-2. **Host-side tarballs** that get uploaded into each sandbox at boot:
+### E2B backend
+
+Set `SLIME_AGENT_SANDBOX_BACKEND=e2b` (the default) and configure `E2B_API_KEY` (e.g. the standard `e2b_xxx` key from https://e2b.dev, or any internal endpoint that accepts the same SDK). The official SDK validates this value locally, so internal gateways that ignore auth still need a syntactically valid `e2b_` + 40 hex-character placeholder.
+
+For E2B, also set an image routing key (`SLIME_AGENT_SANDBOX_IMAGE_METADATA_KEY`, legacy `SWE_SANDBOX_IMAGE_METADATA_KEY` still accepted). This is the metadata key your E2B gateway uses to route a boot to a specific image (e.g. `image`). Each sample's `metadata.image` is passed under this key when booting the sandbox.
+
+### Local Docker backend
+
+Set `SLIME_AGENT_SANDBOX_BACKEND=local_docker` to use throwaway local Docker containers instead of E2B. In this mode `metadata.image` is interpreted as a Docker image on the training host; no `E2B_API_KEY` or image routing key is required. Each sample still gets two fresh containers: one agent workspace and one clean eval workspace.
+
+Local Docker requires:
+
+1. Docker available to the Ray rollout worker.
+2. A task image that already contains the target repo and test dependencies.
+3. `ADAPTER_PUBLIC_HOST=host.docker.internal` or another hostname/IP reachable from inside the containers. `LocalDockerSandbox` adds Docker's `host-gateway` alias by default; override with `SLIME_AGENT_DOCKER_RUN_ARGS` if your Docker setup needs custom networking.
+
+All backends also need:
+
+1. **Host-side tarballs** that get uploaded into each sandbox at boot:
    - Node 22 (`node-v22.x-linux-x64.tar.xz`) — exported as `SLIME_AGENT_NODE_TARBALL`.
    - Claude Code CLI npm tarball (`anthropic-ai-claude-code-local-linux-x64.tgz`) — exported as `SLIME_AGENT_CC_TARBALL`.
-3. **An image routing key** (`SLIME_AGENT_SANDBOX_IMAGE_METADATA_KEY`, legacy `SWE_SANDBOX_IMAGE_METADATA_KEY` still accepted) — the metadata key your E2B gateway uses to route a boot to a specific image (e.g. `image`). Each sample's `metadata.image` is passed under this key when booting the sandbox.
-4. **Network reachability**: each sandbox dials back to the host's Anthropic adapter over `http://${ADAPTER_PUBLIC_HOST}:${ADAPTER_PORT}`. The adapter host must be reachable from inside the sandboxes (set `ADAPTER_PUBLIC_HOST` to a routable IP, not `127.0.0.1`).
+2. **Network reachability**: each sandbox dials back to the host's Anthropic adapter over `http://${ADAPTER_PUBLIC_HOST}:${ADAPTER_PORT}`. The adapter host must be reachable from inside the sandboxes (set `ADAPTER_PUBLIC_HOST` to a routable IP or container-reachable hostname, not `127.0.0.1`).
 
 ## Dataset Format
 
@@ -75,6 +91,23 @@ SSH as `root`) — create that file (or point `HOSTFILE` at your own) before
 launching. It then dumps every rollout to `runs/${EXP_TAG}_${STAMP}/rollout_dumps/`
 and tees stdout into `runs/${EXP_TAG}_${STAMP}/run.log`.
 
+For a no-E2B single-node rollout smoke, build a local task image and use the local Docker launcher:
+
+```bash
+cd slime/
+
+docker build -f examples/coding_agent_rl/local_docker/Dockerfile \
+  -t slime-cagent-smoke:latest .
+
+export HF_CHECKPOINT=/path/to/Qwen3.6-35B-A3B
+export REF_MODEL_PATH=/path/to/Qwen3.6-35B-A3B_torch_dist
+export PROMPT_DATA=examples/coding_agent_rl/local_docker/slime_smoke.jsonl
+export SLIME_AGENT_NODE_TARBALL=/path/to/node-v22.20.0-linux-x64.tar.xz
+export SLIME_AGENT_CC_TARBALL=/path/to/anthropic-ai-claude-code-local-linux-x64.tgz
+
+bash examples/coding_agent_rl/run_qwen36_35b_a3b_swe_local_docker.sh
+```
+
 ## New Arguments
 
 `generate.py` is wired in through slime's standard custom-generate hook:
@@ -118,8 +151,12 @@ contract (read inside `slime/agent/`); `SWE_*` are this SWE example's task knobs
 | --- | --- | --- |
 | `ADAPTER_PUBLIC_HOST` | `${MASTER_ADDR}` | Public IP the sandbox uses to reach the Anthropic adapter. **Must be routable from inside the sandbox.** |
 | `ADAPTER_BIND_HOST` / `ADAPTER_PORT` | `0.0.0.0` / `18001` | Bind address of the Anthropic adapter on the host. |
+| `SLIME_AGENT_SANDBOX_BACKEND` | `e2b` | Sandbox backend. Use `local_docker` to avoid E2B and run throwaway Docker containers on the rollout host. |
 | `E2B_API_KEY` | — | E2B (or compatible) API key. |
 | `SLIME_AGENT_SANDBOX_IMAGE_METADATA_KEY` | — | **Required.** Which metadata key the E2B gateway routes images by (e.g. `image`); each sample's `metadata.image` is passed under it. (Legacy `SWE_SANDBOX_IMAGE_METADATA_KEY` still accepted.) |
+| `SLIME_AGENT_DOCKER_BIN` | `docker` | Docker executable for `local_docker`. |
+| `SLIME_AGENT_DOCKER_RUN_ARGS` | unset | Extra flags appended to `docker run` for `local_docker` sandboxes. |
+| `SLIME_AGENT_DOCKER_KEEP_CONTAINER` | unset | If set, keep local Docker containers after the rollout for debugging. |
 | `SLIME_AGENT_NODE_TARBALL` | — | Host path to Node 22 tarball uploaded into each sandbox. |
 | `SLIME_AGENT_CC_TARBALL` | — | Host path to the Claude Code CLI npm tarball. |
 | `SLIME_AGENT_CC_EXTRA_ARGS` | (see launcher) | Extra flags appended to the `claude` CLI invocation — registers the read-only `investigator` sub-agent, disables `WebFetch`/`WebSearch`, disables slash commands. |
@@ -187,14 +224,16 @@ prompt-base restarts.
 
 ## Porting to a New Sandbox Backend
 
-`slime.agent.sandbox.Sandbox` exposes the shared sandbox contract, and
-`slime.agent.sandbox.E2BSandbox` is the E2B implementation:
+`slime.agent.sandbox.Sandbox` exposes the shared sandbox contract.
+`slime.agent.sandbox.E2BSandbox` is the E2B implementation and
+`slime.agent.sandbox.LocalDockerSandbox` is the no-external-service local implementation:
 
 ```python
 await sb.exec(cmd, user=..., check=..., timeout=...)
 await sb.write_file(sandbox_path, content_or_host_path, user=...)
 await sb.read_file(sandbox_path, user=...)
 async with E2BSandbox(...) as sb: ...
+async with LocalDockerSandbox(...) as sb: ...
 ```
 
-Reimplement those on Docker / Modal / a local VM and everything in `generate.py` keeps working unchanged.
+Reimplement the same contract on Modal / a local VM / another container runtime and everything in `generate.py` keeps working unchanged.

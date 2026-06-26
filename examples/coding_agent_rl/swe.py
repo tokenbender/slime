@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from slime.agent import sandbox as agent_sandbox
-from slime.agent.sandbox import E2BSandbox, Sandbox
+from slime.agent.sandbox import E2BSandbox, LocalDockerSandbox, Sandbox
 from slime.utils.types import Sample
 
 logger = logging.getLogger(__name__)
@@ -33,6 +33,15 @@ SWE_PROMPT = os.environ.get(
     "tests to verify your fix passes. Do NOT modify PROBLEM_STATEMENT.md and do "
     "NOT commit. When finished, print a one-line summary and exit.",
 )
+
+
+def _new_sandbox(image: str) -> Sandbox:
+    backend = agent_sandbox.sandbox_backend()
+    if backend in {"e2b", "e2b_sdk"}:
+        return E2BSandbox(image)
+    if backend in {"local_docker", "docker"}:
+        return LocalDockerSandbox(image)
+    raise ValueError(f"Unsupported SLIME_AGENT_SANDBOX_BACKEND={backend!r}")
 
 
 # ---------------------------------------------------------------------------
@@ -168,10 +177,10 @@ async def evaluate(
     No-test-cheating guarantee: the eval sandbox is built from the same image
     but starts CLEAN, so only the model-produced diff affects reward."""
     if not (swepro or eval_cmd or f2p_script):
-        logger.warning("[e2b.evaluate] no swepro/eval_cmd/f2p_script; reward=0")
+        logger.warning("[swe.evaluate] no swepro/eval_cmd/f2p_script; reward=0")
         return 0.0, True
 
-    async with E2BSandbox(image) as ev:
+    async with _new_sandbox(image) as ev:
         await agent_sandbox.ensure_agent_user(ev, workdir)
         if swepro:
             await _setup_swepro_assets(ev, swepro)

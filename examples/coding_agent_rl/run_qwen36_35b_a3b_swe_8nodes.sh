@@ -47,6 +47,12 @@ printf -v MOE_LAYER_FREQ "[%s]" "$(IFS=', '; echo "${arr[*]}")"
 # ============ context length ============
 MAX_CONTEXT_LEN="${MAX_CONTEXT_LEN:-96000}"
 MAX_GEN_LEN="${MAX_GEN_LEN:-32768}"
+NUM_ROLLOUT="${NUM_ROLLOUT:-100}"
+ROLLOUT_BATCH_SIZE="${ROLLOUT_BATCH_SIZE:-8}"
+N_SAMPLES_PER_PROMPT="${N_SAMPLES_PER_PROMPT:-8}"
+GLOBAL_BATCH_SIZE="${GLOBAL_BATCH_SIZE:-64}"
+MICRO_BATCH_SIZE="${MICRO_BATCH_SIZE:-1}"
+ROLLOUT_NUM_GPUS="${ROLLOUT_NUM_GPUS:-64}"
 
 # ============ paths — override before launching ============
 HF_CHECKPOINT="${HF_CHECKPOINT:-/path/to/Qwen3.6-35B-A3B}"
@@ -121,16 +127,16 @@ ROLLOUT_ARGS=(
    --input-key prompt
    --label-key label
    --metadata-key metadata
-   --num-rollout 100
-   --rollout-batch-size 8
-   --n-samples-per-prompt 8
+   --num-rollout ${NUM_ROLLOUT}
+   --rollout-batch-size ${ROLLOUT_BATCH_SIZE}
+   --n-samples-per-prompt ${N_SAMPLES_PER_PROMPT}
    --rollout-max-context-len ${MAX_CONTEXT_LEN}
    --rollout-max-response-len ${MAX_GEN_LEN}
    --rollout-temperature 1.0
    --rollout-stop-token-ids 248046 248044
    --num-steps-per-rollout 1
-   --global-batch-size 64
-   --micro-batch-size 1
+   --global-batch-size ${GLOBAL_BATCH_SIZE}
+   --micro-batch-size ${MICRO_BATCH_SIZE}
    --save-debug-rollout-data "${RUN_ROOT}/rollout_dumps/rollout_{rollout_id}.pt"
 )
 
@@ -174,7 +180,7 @@ OPTIMIZER_ARGS=(
 )
 
 SGLANG_ARGS=(
-   --rollout-num-gpus 64
+   --rollout-num-gpus ${ROLLOUT_NUM_GPUS}
    --rollout-num-gpus-per-engine ${ROLLOUT_TP_SIZE}
    --sglang-mem-fraction-static ${ROLLOUT_MEM_UTILIZATION}
    --sglang-enable-dp-attention
@@ -197,6 +203,15 @@ MISC_ARGS=(
    --colocate
 )
 
+if [[ "${DEBUG_ROLLOUT_ONLY:-0}" == "1" ]]; then
+   MISC_ARGS+=(--debug-rollout-only)
+fi
+
+EXTRA_ARGS=()
+if [[ -n "${EXTRA_TRAIN_ARGS:-}" ]]; then
+   EXTRA_ARGS=( ${EXTRA_TRAIN_ARGS} )
+fi
+
 # ============ ray cluster network ============
 # Set MASTER_ADDR before the SWE block: ADAPTER_PUBLIC_HOST below falls back to it.
 export MASTER_ADDR="${MASTER_ADDR:-${MLP_WORKER_0_HOST:-$(hostname -I | awk '{print $1}')}}"
@@ -207,7 +222,10 @@ export NCCL_SOCKET_IFNAME="${NCCL_SOCKET_IFNAME:-${MLP_SOCKET_IFNAME:-eth0}}"
 # ============ SWE / claude-code rollout knobs ============
 
 export SWE_AGENT="${SWE_AGENT:-claude_code}"
-export E2B_API_KEY="${E2B_API_KEY:-e2b_0000000000000000000000000000000000000000}"
+export SLIME_AGENT_SANDBOX_BACKEND="${SLIME_AGENT_SANDBOX_BACKEND:-e2b}"
+if [[ "${SLIME_AGENT_SANDBOX_BACKEND}" == "e2b" || "${SLIME_AGENT_SANDBOX_BACKEND}" == "e2b_sdk" ]]; then
+  export E2B_API_KEY="${E2B_API_KEY:-e2b_0000000000000000000000000000000000000000}"
+fi
 # Metadata key your gateway routes images by; `image` is the neutral default.
 export SLIME_AGENT_SANDBOX_IMAGE_METADATA_KEY="${SLIME_AGENT_SANDBOX_IMAGE_METADATA_KEY:-image}"
 export SLIME_AGENT_NODE_TARBALL="${SLIME_AGENT_NODE_TARBALL:-/path/to/node-v22.x-linux-x64.tar.xz}"
@@ -271,11 +289,13 @@ keys = (
     "no_proxy", "NO_PROXY",
     "SWE_AGENT",
     "E2B_API_KEY", "ADAPTER_PUBLIC_HOST",
-    "SLIME_AGENT_NODE_TARBALL", "SLIME_AGENT_CC_TARBALL",
+    "SLIME_AGENT_SANDBOX_BACKEND",
+    "SLIME_AGENT_DOCKER_BIN", "SLIME_AGENT_DOCKER_RUN_ARGS", "SLIME_AGENT_DOCKER_KEEP_CONTAINER",
+    "SLIME_AGENT_NODE_TARBALL", "SLIME_AGENT_CC_TARBALL", "SLIME_AGENT_CODEX_TARBALL",
     "SWE_AGENT_TIME_BUDGET_SEC", "SWE_EVAL_TIMEOUT_SEC", "SWE_BOOT_CONCURRENCY",
     "ADAPTER_BIND_HOST", "ADAPTER_PORT",
     "SLIME_AGENT_CC_EXTRA_ARGS",
-    "SLIME_AGENT_CC_EXTRA_ENVS",
+    "SLIME_AGENT_CC_EXTRA_ENVS", "SLIME_AGENT_CODEX_EXTRA_ARGS", "SLIME_AGENT_CODEX_EXTRA_ENVS",
     "SWE_CC_PROMPT",
     "SLIME_AGENT_SANDBOX_IMAGE_METADATA_KEY",
 )
@@ -305,6 +325,7 @@ ray job submit --address="http://127.0.0.1:8265" \
    "${PERF_ARGS[@]}" \
    "${SGLANG_ARGS[@]}" \
    "${MISC_ARGS[@]}" \
+   "${EXTRA_ARGS[@]}" \
    2>&1 | tee "${LOG_FILE}"
 
 echo "RUN_ROOT=${RUN_ROOT}"
