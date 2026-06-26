@@ -29,7 +29,7 @@ from typing import Any
 
 from slime.agent.adapters import AnthropicAdapter, OpenAIAdapter
 from slime.agent.aiohttp_threaded import FilteredAccessLogger, run_app_in_thread
-from slime.agent.harness import ClaudeCodeHarness, CodexHarness
+from slime.agent.harness import ClaudeCodeHarness, CodexHarness, LocalScriptHarness
 from slime.agent.sandbox import E2BSandbox, LocalDockerSandbox, Sandbox, sandbox_backend
 from slime.utils.misc import SingletonMeta
 from slime.utils.processing_utils import load_tokenizer
@@ -43,6 +43,7 @@ logging.getLogger("e2b").setLevel(logging.WARNING)
 _AGENTS = {
     "claude_code": (ClaudeCodeHarness, AnthropicAdapter),
     "codex": (CodexHarness, OpenAIAdapter),
+    "local_script": (LocalScriptHarness, OpenAIAdapter),
 }
 AGENT_NAME = os.environ.get("SWE_AGENT", "claude_code")
 if AGENT_NAME not in _AGENTS:
