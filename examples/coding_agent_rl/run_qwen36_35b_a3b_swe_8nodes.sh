@@ -225,6 +225,11 @@ export MASTER_ADDR="${MASTER_ADDR:-${MLP_WORKER_0_HOST:-$(hostname -I | awk '{pr
 export MASTER_PORT="${MASTER_PORT:-${MLP_WORKER_0_PORT:-6379}}"
 export GLOO_SOCKET_IFNAME="${GLOO_SOCKET_IFNAME:-${MLP_SOCKET_IFNAME:-eth0}}"
 export NCCL_SOCKET_IFNAME="${NCCL_SOCKET_IFNAME:-${MLP_SOCKET_IFNAME:-eth0}}"
+export RAY_NOFILE_LIMIT="${RAY_NOFILE_LIMIT:-1048576}"
+
+if [[ -n "${RAY_NOFILE_LIMIT}" ]]; then
+  ulimit -n "${RAY_NOFILE_LIMIT}" || echo "Warning: failed to set open-file limit to ${RAY_NOFILE_LIMIT}"
+fi
 
 # ============ SWE / claude-code rollout knobs ============
 
@@ -277,7 +282,8 @@ if [[ -f "${HOSTFILE}" ]]; then
     [[ "${WORKER_IP}" == "${MASTER_ADDR}" ]] && continue
     echo "Starting Ray worker on ${WORKER_IP}"
     ssh -o StrictHostKeyChecking=no "root@${WORKER_IP}" \
-      "pkill -9 sglang ; ray stop --force ; pkill -9 python ; \
+      "ulimit -n ${RAY_NOFILE_LIMIT} || true ; \
+       pkill -9 sglang ; ray stop --force ; pkill -9 python ; \
        ray start --address=${MASTER_ADDR}:6379 --num-gpus ${ACTOR_NUM_GPUS_PER_NODE} \
          --node-ip-address ${WORKER_IP} --disable-usage-stats" &
   done
