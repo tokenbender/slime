@@ -228,6 +228,32 @@ export GLOO_SOCKET_IFNAME="${GLOO_SOCKET_IFNAME:-${MLP_SOCKET_IFNAME:-eth0}}"
 export NCCL_SOCKET_IFNAME="${NCCL_SOCKET_IFNAME:-${MLP_SOCKET_IFNAME:-eth0}}"
 export RAY_NOFILE_LIMIT="${RAY_NOFILE_LIMIT:-1048576}"
 
+NVIDIA_PIP_LIB_DIRS="$(
+  python3 - <<'PY'
+import pathlib
+import site
+
+seen = []
+for root in map(pathlib.Path, site.getsitepackages()):
+    for path in sorted(root.glob("nvidia/**/lib")):
+        if path.is_dir() and str(path) not in seen:
+            seen.append(str(path))
+print(":".join(seen))
+PY
+)"
+LD_PARTS=()
+if [[ -n "${CUDA_HOME:-}" && -d "${CUDA_HOME}/lib64" ]]; then
+  LD_PARTS+=("${CUDA_HOME}/lib64")
+fi
+if [[ -n "${NVIDIA_PIP_LIB_DIRS}" ]]; then
+  LD_PARTS+=("${NVIDIA_PIP_LIB_DIRS}")
+fi
+if [[ -n "${LD_LIBRARY_PATH:-}" ]]; then
+  LD_PARTS+=("${LD_LIBRARY_PATH}")
+fi
+printf -v LD_LIBRARY_PATH "%s:" "${LD_PARTS[@]}"
+export LD_LIBRARY_PATH="${LD_LIBRARY_PATH%:}"
+
 if [[ -n "${RAY_NOFILE_LIMIT}" ]]; then
   ulimit -n "${RAY_NOFILE_LIMIT}" || echo "Warning: failed to set open-file limit to ${RAY_NOFILE_LIMIT}"
 fi
