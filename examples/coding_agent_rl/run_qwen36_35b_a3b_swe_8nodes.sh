@@ -127,6 +127,7 @@ ROLLOUT_ARGS=(
    --input-key prompt
    --label-key label
    --metadata-key metadata
+   --apply-chat-template
    --num-rollout ${NUM_ROLLOUT}
    --rollout-batch-size ${ROLLOUT_BATCH_SIZE}
    --n-samples-per-prompt ${N_SAMPLES_PER_PROMPT}
