@@ -28,9 +28,11 @@ export EP_SIZE="${EP_SIZE:-${ACTOR_NUM_GPUS_PER_NODE}}"
 export ETP_SIZE="${ETP_SIZE:-1}"
 
 export NUM_ROLLOUT="${NUM_ROLLOUT:-1}"
-export ROLLOUT_BATCH_SIZE="${ROLLOUT_BATCH_SIZE:-1}"
+# On the 8-GPU Qwen3.6-35B-A3B smoke, actor DP=8; Megatron requires
+# global_batch_size to divide micro_batch_size * data_parallel_size.
+export ROLLOUT_BATCH_SIZE="${ROLLOUT_BATCH_SIZE:-8}"
 export N_SAMPLES_PER_PROMPT="${N_SAMPLES_PER_PROMPT:-1}"
-export GLOBAL_BATCH_SIZE="${GLOBAL_BATCH_SIZE:-1}"
+export GLOBAL_BATCH_SIZE="${GLOBAL_BATCH_SIZE:-8}"
 export MICRO_BATCH_SIZE="${MICRO_BATCH_SIZE:-1}"
 export MAX_CONTEXT_LEN="${MAX_CONTEXT_LEN:-1024}"
 export MAX_GEN_LEN="${MAX_GEN_LEN:-32}"
