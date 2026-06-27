@@ -15,6 +15,47 @@ slime's design goal is to make these two capabilities reinforce each other witho
 
 This makes slime one of the most battle-tested open RL post-training frameworks: small enough to understand and extend, but validated through complete training loops behind SOTA-level model releases.
 
+## Start Here: Smallest MoE Playground
+
+If you are learning slime's MoE path, start with **Moonlight-16B-A3B** before jumping to Qwen3-30B-A3B, Qwen3.6-35B-A3B, or larger GLM/Kimi/DeepSeek recipes.
+
+Moonlight is the smallest real MoE model recipe checked into this repo:
+
+- **Task**: math RL / GRPO on DAPO Math, with verifier-style math rewards.
+- **Model config**: [`scripts/models/moonlight.sh`](scripts/models/moonlight.sh)
+- **8-GPU BF16-style launcher**: [`scripts/run-moonlight-16B-A3B.sh`](scripts/run-moonlight-16B-A3B.sh)
+- **4-GPU INT4 launcher**: [`scripts/low_precision/run-moonlight-16B-A3B-int4.sh`](scripts/low_precision/run-moonlight-16B-A3B-int4.sh)
+- **Training data**: `/root/dapo-math-17k/dapo-math-17k.jsonl`
+- **Optional eval data**: `/root/aime-2024/aime-2024.jsonl`
+
+This route exercises the important slime stack directly: Megatron training, SGLang rollout, colocated weight updates, MoE expert parallelism, CPU Adam offload, dynamic sampling, and GRPO. It does **not** require E2B, Docker, Claude Code, Codex CLI, or an external coding-agent service.
+
+For a first smoke, shrink the launcher aggressively before running:
+
+```bash
+--num-rollout 1
+--rollout-batch-size 4
+--n-samples-per-prompt 1
+--rollout-max-response-len 256
+--num-steps-per-rollout 1
+```
+
+Use the built-in 4-GPU INT4 smoke when you want the lowest-friction MoE check. It uses a four-row local math dataset and one rollout, so you can validate the training/rollout/weight-sync path before downloading DAPO/AIME:
+
+```bash
+bash scripts/low_precision/run-moonlight-16B-A3B-int4-smoke.sh
+```
+
+Then move to the full 4-GPU INT4 launcher:
+
+```bash
+bash scripts/low_precision/run-moonlight-16B-A3B-int4.sh
+```
+
+You still need the normal training stack: CUDA/NCCL/PyTorch, Ray, SGLang, TransformerEngine, patched Megatron-LM on `PYTHONPATH`, local Moonlight checkpoints, and a converted Megatron `torch_dist` checkpoint. The tiny smoke includes its own prompt data; the full launcher additionally needs the DAPO dataset.
+
+For coding-agent RL without E2B, use the patched local-Docker path in [`examples/coding_agent_rl/local_docker/README.md`](examples/coding_agent_rl/local_docker/README.md). That path is intentionally larger today because it targets Qwen3.6-35B-A3B; Moonlight is the better first model for learning slime's MoE mechanics.
+
 ## Why This Design Matters
 
 - **Battle-tested by frontier model training**: slime is the RL framework behind [GLM-5.2](https://z.ai/blog/glm-5.2), [GLM-5.1](https://z.ai/blog/glm-5.1), [GLM-5](https://z.ai/blog/glm-5), [GLM-4.7](https://z.ai/blog/glm-4.7), [GLM-4.6](https://z.ai/blog/glm-4.6), and [GLM-4.5](https://z.ai/blog/glm-4.5). This validates the full post-training loop, not only isolated examples.
@@ -70,6 +111,7 @@ Useful engineering docs:
 
 ## Table of Contents
 
+- [Start Here: Smallest MoE Playground](#start-here-smallest-moe-playground)
 - [Why This Design Matters](#why-this-design-matters)
 - [Production Validation](#production-validation)
 - [Native Engine Pass-Through and SGLang Deployment](#native-engine-pass-through-and-sglang-deployment)
