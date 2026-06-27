@@ -40,13 +40,19 @@ For a first smoke, shrink the launcher aggressively before running:
 --num-steps-per-rollout 1
 ```
 
-Use the 4-GPU INT4 launcher when you want the lowest-friction MoE smoke:
+Use the built-in 4-GPU INT4 smoke when you want the lowest-friction MoE check. It uses a four-row local math dataset and one rollout, so you can validate the training/rollout/weight-sync path before downloading DAPO/AIME:
+
+```bash
+bash scripts/low_precision/run-moonlight-16B-A3B-int4-smoke.sh
+```
+
+Then move to the full 4-GPU INT4 launcher:
 
 ```bash
 bash scripts/low_precision/run-moonlight-16B-A3B-int4.sh
 ```
 
-You still need the normal training stack: CUDA/NCCL/PyTorch, Ray, SGLang, TransformerEngine, patched Megatron-LM on `PYTHONPATH`, local Moonlight checkpoints, a converted Megatron `torch_dist` checkpoint, and the DAPO dataset.
+You still need the normal training stack: CUDA/NCCL/PyTorch, Ray, SGLang, TransformerEngine, patched Megatron-LM on `PYTHONPATH`, local Moonlight checkpoints, and a converted Megatron `torch_dist` checkpoint. The tiny smoke includes its own prompt data; the full launcher additionally needs the DAPO dataset.
 
 For coding-agent RL without E2B, use the patched local-Docker path in [`examples/coding_agent_rl/local_docker/README.md`](examples/coding_agent_rl/local_docker/README.md). That path is intentionally larger today because it targets Qwen3.6-35B-A3B; Moonlight is the better first model for learning slime's MoE mechanics.
 
