@@ -108,6 +108,11 @@ export SLIME_AGENT_CC_TARBALL=/path/to/anthropic-ai-claude-code-local-linux-x64.
 bash examples/coding_agent_rl/run_qwen36_35b_a3b_swe_local_docker.sh
 ```
 
+For the dependency-light Qwen3.6-35B-A3B train smoke that also avoids Claude
+Code/Codex CLI tarballs, use
+[`local_docker/README.md`](local_docker/README.md) and run
+`run_qwen36_35b_a3b_swe_local_docker_train_smoke.sh`.
+
 ## New Arguments
 
 `generate.py` is wired in through slime's standard custom-generate hook:
